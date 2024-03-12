@@ -62,7 +62,7 @@ official_model_list_v2 = ["2.0.0","2.0.1","2.0.2","2.0.3"]
 reversed_supported_languages = {name: code for code, name in supported_languages.items()}
 
 class TTSWrapper:
-    def __init__(self,output_folder = "./output", speaker_folder="./speakers",model_folder="./xtts_folder",lowvram = False,model_source = "local",model_version = "2.0.2",device = "cuda",deepspeed = False,enable_cache_results = True):
+    def __init__(self,output_folder = "./output", speaker_folder="./speakers",latent_speaker_folder = "./latent_speakers",model_folder="./xtts_folder",lowvram = False,model_source = "local",model_version = "2.0.2",device = "cuda",deepspeed = False,enable_cache_results = True):
 
         self.cuda = device # If the user has chosen what to use, we rewrite the value to the value we want to use
         self.device = 'cpu' if lowvram else (self.cuda if torch.cuda.is_available() else "cpu")
@@ -80,6 +80,7 @@ class TTSWrapper:
         self.speaker_folder = speaker_folder
         self.output_folder = output_folder
         self.model_folder = model_folder
+        self.latent_speaker_folder = latent_speaker_folder
 
         self.create_directories()
         check_tts_version()
@@ -88,6 +89,8 @@ class TTSWrapper:
         self.cache_file_path = os.path.join(output_folder, "cache.json")
 
         self.is_official_model = True
+        
+        self.current_model = None
         
         if self.enable_cache_results:
             # Reset the contents of the cache file at each initialization.
@@ -184,6 +187,7 @@ class TTSWrapper:
            is_official_model = False
  
            self.load_local_model(load = is_official_model)
+           self.load_all_latents()
            if self.lowvram == False:
              # Due to the fact that we create latents on the cpu and load them from the cuda we get an error
              logger.info("Pre-create latents for all current speakers")
@@ -257,11 +261,11 @@ class TTSWrapper:
     def get_or_create_latents(self, speaker_name, speaker_wav):
         speaker_name = speaker_name.lower()
         if speaker_name not in self.latents_cache:
-            logger.info(f"creating latents for {speaker_name}: {speaker_wav}")
+            logger.info(f"Creating latents for {speaker_name}: {speaker_wav}")
             gpt_cond_latent, speaker_embedding = self.model.get_conditioning_latents(speaker_wav)
             self.latents_cache[speaker_name] = (gpt_cond_latent, speaker_embedding)
+            self.save_latents_to_json(speaker_name)
         return self.latents_cache[speaker_name]
-
 
     def create_latents_for_all(self):
         speakers_list = self._get_speakers()
@@ -269,11 +273,41 @@ class TTSWrapper:
         for speaker in speakers_list:
             self.get_or_create_latents(speaker['speaker_name'],speaker['speaker_wav'])
         logger.info(f"Latents created for all {len(speakers_list)} speakers.")
-        #logger.info(f"Latents created for all {self.latents_cache} speakers !!!!!")
+ 
+    def save_latents_to_json(self, speaker_name):
+        # Define the file path
+        file_path = os.path.join(self.latent_speaker_folder, f"{speaker_name}.json")
+        # Prepare the data to save; ensure it is serializable
+        data_to_save = {
+            "gpt_cond_latent": self.latents_cache[speaker_name][0].tolist(),
+            "speaker_embedding": self.latents_cache[speaker_name][1].tolist()
+        }
+        # Write the data to a JSON file
+        with open(file_path, 'w') as json_file:
+            json.dump(data_to_save, json_file)
+        logger.info(f"Latents for {speaker_name} saved to {file_path}") 
+ 
+    def load_latents_from_json(self, file_path):
+        with open(file_path, 'r') as json_file:
+            data = json.load(json_file)
+        gpt_cond_latent = torch.tensor(data['gpt_cond_latent'], device='cuda:0')
+        speaker_embedding = torch.tensor(data['speaker_embedding'], device='cuda:0')
+        return gpt_cond_latent, speaker_embedding
+
+    def load_all_latents(self):
+        # Iterate over all json files in the latent speaker folder
+        for file_name in os.listdir(self.latent_speaker_folder):
+            if file_name.endswith('.json'):
+                file_path = os.path.join(self.latent_speaker_folder, file_name)
+                speaker_name = file_name[:-5]  # Remove '.json' to get the speaker name
+                gpt_cond_latent, speaker_embedding = self.load_latents_from_json(file_path)
+                self.latents_cache[speaker_name] = (gpt_cond_latent, speaker_embedding)
+        
+        logger.info(f"Loaded latents for {len(self.latents_cache)} speakers.")
 
     # DIRICTORIES FUNCS
     def create_directories(self):
-        directories = [self.output_folder, self.speaker_folder,self.model_folder]
+        directories = [self.output_folder, self.speaker_folder,self.model_folder, self.latent_speaker_folder]
 
         for sanctuary in directories:
             # List of folders to be checked for existence
@@ -548,14 +582,24 @@ class TTSWrapper:
     # MAIN FUNC
     def process_tts_to_file(self, text, speaker_name_or_path, language, file_name_or_path="out.wav", stream=False):
         if file_name_or_path == '' or file_name_or_path is None:
-            file_name_or_path = "out.wav"  
+            file_name_or_path = "out.wav"
         try:
-            # Check speaker_name_or_path in models_folder and speakers_folder
-            if speaker_name_or_path:
+            # Normalize speaker name
+            speaker_name = speaker_name_or_path.lower()
+            # Path for JSON file in latent speaker folder
+            speaker_json_path = Path(self.latent_speaker_folder) / f"{speaker_name}.json"
+
+            # Check if the speaker's JSON exists in the latent speaker folder
+            if speaker_json_path.exists():
+                # Load latent directly without needing a .wav file
+                speaker_wav = "out.wav"
+                logger.info(f"Using latents from JSON for {speaker_name}")
+            else:
+                # Check speaker_name_or_path in models_folder and speakers_folder
                 speaker_path_models_folder = Path(self.model_folder) / speaker_name_or_path
                 speaker_path_speakers_folder = Path(self.speaker_folder) / speaker_name_or_path
                 speaker_path_speakers_file = speaker_path_speakers_folder.with_suffix('.wav')
-                
+            
                 # Check if the .wav file exists or if the directory exists for the speaker
                 if speaker_path_speakers_folder.is_dir() or speaker_path_speakers_file.exists():
                     speaker_wav = self.get_speaker_wav(speaker_name_or_path)
@@ -631,7 +675,3 @@ class TTSWrapper:
         except Exception as e:
             raise e  # Propagate exceptions for endpoint handling.
 
-
-
-
-        
