@@ -63,7 +63,6 @@ reversed_supported_languages = {name: code for code, name in supported_languages
 
 class TTSWrapper:
     def __init__(self,output_folder = "./output", speaker_folder="./speakers",latent_speaker_folder = "./latent_speakers",model_folder="./xtts_folder",lowvram = False,model_source = "local",model_version = "2.0.2",device = "cuda",deepspeed = False,enable_cache_results = True):
-
         self.cuda = device # If the user has chosen what to use, we rewrite the value to the value we want to use
         self.device = 'cpu' if lowvram else (self.cuda if torch.cuda.is_available() else "cpu")
         self.lowvram = lowvram  # Store whether we want to run in low VRAM mode.
@@ -260,16 +259,21 @@ class TTSWrapper:
     # SPEAKER FUNCS
     def get_or_create_latents(self, speaker_name, speaker_wav, language_code):
         speaker_name = speaker_name.lower()
-        # Append the language code to the speaker name for differentiation
         speaker_key = f"{speaker_name}_{language_code}"
         if speaker_key not in self.latents_cache:
             logger.info(f"Creating latents for {speaker_name} in {language_code}: {speaker_wav}")
             gpt_cond_latent, speaker_embedding = self.model.get_conditioning_latents(speaker_wav)
+            # Move latents to the current device
+            gpt_cond_latent = gpt_cond_latent.to(self.device)
+            speaker_embedding = speaker_embedding.to(self.device)
             self.latents_cache[speaker_key] = (gpt_cond_latent, speaker_embedding)
-            # Pass the language code to the save method
             self.save_latents_to_json(speaker_name, language_code)
-        return self.latents_cache[speaker_key]
-
+        else:
+            # Ensure cached latents are on the current device
+            gpt_cond_latent, speaker_embedding = self.latents_cache[speaker_key]
+            gpt_cond_latent = gpt_cond_latent.to(self.device)
+            speaker_embedding = speaker_embedding.to(self.device)
+        return gpt_cond_latent, speaker_embedding
 
     def create_latents_for_all(self):
         # Iterate over each language subdirectory in the speaker folder
@@ -665,7 +669,7 @@ class TTSWrapper:
             else:
                 # Check speaker_name_or_path in models_folder and speakers_folder
                 speaker_path_models_folder = Path(self.model_folder) / speaker_name_or_path
-                speaker_path_speakers_folder = Path(self.speaker_folder) / speaker_name_or_path
+                speaker_path_speakers_folder = Path(self.speaker_folder) / language_code / speaker_name
                 speaker_path_speakers_file = speaker_path_speakers_folder.with_suffix('.wav')
             
                 # Check if the .wav file exists or if the directory exists for the speaker
