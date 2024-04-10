@@ -468,6 +468,67 @@ class TTSWrapper:
         return wav_files
 
 
+    def get_wav_files(self, path):
+        """Return a list of wav files in the given directory."""
+        return [f for f in os.listdir(path) if f.endswith('.wav')]
+
+    def _get_speakers_from_dir(self, path, existing_speakers=None):
+        """Helper function to retrieve speaker information from directories, excluding duplicates."""
+        if existing_speakers is None:
+            existing_speakers = []
+        speakers = []
+        for f in os.listdir(path):
+            full_path = os.path.join(path, f)
+            if os.path.isdir(full_path) and f not in existing_speakers:
+                subdir_files = self.get_wav_files(full_path)
+                if subdir_files:
+                    speaker_wav = [os.path.join(path, f, s) for s in subdir_files]
+                    preview = os.path.join(f, subdir_files[0])
+                    speakers.append({
+                        'speaker_name': f,
+                        'speaker_wav': speaker_wav,
+                        'preview': preview
+                    })
+        return speakers
+
+    def _get_speakers_from_json(self, path):
+        """Helper function to retrieve speaker names from JSON files."""
+        speakers = []
+        for root, dirs, files in os.walk(path):
+            for file in files:
+                if file.endswith('.json'):
+                    speaker_name = os.path.splitext(file)[0]
+                    speaker_wav = os.path.join(root, file)
+                    preview = file
+                    speakers.append({
+                        'speaker_name': speaker_name,
+                        'speaker_wav': speaker_wav,
+                        'preview': preview
+                    })
+        return speakers
+
+    def get_speakers(self):
+        """Gets available speakers, ensuring uniqueness across both folders."""
+        speaker_info = {}
+        for lang_code in os.listdir(self.speaker_folder):
+            speaker_path = os.path.join(self.speaker_folder, lang_code)
+            latent_speaker_path = os.path.join(self.latent_speaker_folder, lang_code)
+
+            latent_speaker_names = [s['speaker_name'] for s in self._get_speakers_from_json(latent_speaker_path)]
+            speaker_names = [s['speaker_name'] for s in self._get_speakers_from_dir(speaker_path, existing_speakers=latent_speaker_names)]
+
+            # Combine and ensure unique speaker names
+            combined_speakers = list(set(latent_speaker_names + speaker_names))
+
+            speaker_info[lang_code] = {
+                'speakers': combined_speakers
+            }
+        return speaker_info
+
+        """ Gets available speakers """
+        speakers = [ s['speaker_name'] for s in self._get_speakers() ] 
+        return speakers
+
     def _get_speakers(self, path=None):
         """
         Gets info on all the speakers from the given path or the default speaker folder.
@@ -506,11 +567,6 @@ class TTSWrapper:
                         'speaker_wav': speaker_wav,
                         'preview': preview
                         })
-        return speakers
-
-    def get_speakers(self):
-        """ Gets available speakers """
-        speakers = [ s['speaker_name'] for s in self._get_speakers() ] 
         return speakers
 
     def get_local_ip(self):
