@@ -13,6 +13,7 @@ from xtts_api_server.modeldownloader import download_model,check_tts_version
 from loguru import logger
 from datetime import datetime
 import os
+import sys  # <-- Add sys import
 import time 
 import re
 import json
@@ -76,10 +77,23 @@ class TTSWrapper:
 
         self.deepspeed = deepspeed
 
-        self.speaker_folder = speaker_folder
-        self.output_folder = output_folder
-        self.model_folder = model_folder
-        self.latent_speaker_folder = latent_speaker_folder
+        # Determine the base path depending on whether the script is frozen (compiled)
+        if getattr(sys, 'frozen', False):
+            # If the application is run as a bundle/compiled, the base path is the directory containing the executable
+            base_path = os.path.dirname(sys.executable)
+        else:
+            # If it's not frozen, assume it's running as a script, use the script's directory
+            # Or fallback to current working directory if __file__ is not available
+            try:
+                base_path = os.path.dirname(os.path.abspath(__file__))
+            except NameError:
+                base_path = os.getcwd()
+
+        # Resolve paths relative to the determined base path
+        self.speaker_folder = os.path.join(base_path, speaker_folder)
+        self.output_folder = os.path.join(base_path, output_folder)
+        self.model_folder = os.path.join(base_path, model_folder)
+        self.latent_speaker_folder = os.path.join(base_path, latent_speaker_folder)
 
         self.create_directories()
         check_tts_version()
@@ -379,14 +393,13 @@ class TTSWrapper:
         # Base directories to be checked for existence
         base_directories = [self.output_folder, self.model_folder]
 
-        # Creating base directories if they do not exist
+        # Creating base directories if they do not exist (Paths are now absolute)
         for directory in base_directories:
-            absolute_path = os.path.abspath(os.path.normpath(directory))
-            if not os.path.exists(absolute_path):
-                os.makedirs(absolute_path)
-                logger.info(f"Folder in the path {absolute_path} has been created")
+            if not os.path.exists(directory):
+                os.makedirs(directory)
+                logger.info(f"Folder in the path {directory} has been created")
 
-        # Creating language subdirectories within speaker_folder and latent_speaker_folder
+        # Creating language subdirectories within speaker_folder and latent_speaker_folder (Paths are now absolute)
         for language_code in supported_languages.keys():
             for folder in [self.speaker_folder, self.latent_speaker_folder]:
                 language_path = os.path.join(folder, language_code)
@@ -511,18 +524,20 @@ class TTSWrapper:
         """Gets available speakers, ensuring uniqueness across both folders."""
         speaker_info = {}
         for lang_code in os.listdir(self.speaker_folder):
-            speaker_path = os.path.join(self.speaker_folder, lang_code)
-            latent_speaker_path = os.path.join(self.latent_speaker_folder, lang_code)
+            full_path = os.path.join(self.speaker_folder, lang_code)
+            if os.path.isdir(full_path):
+                speaker_path = os.path.join(self.speaker_folder, lang_code)
+                latent_speaker_path = os.path.join(self.latent_speaker_folder, lang_code)
 
-            latent_speaker_names = [s['speaker_name'] for s in self._get_speakers_from_json(latent_speaker_path)]
-            speaker_names = [s['speaker_name'] for s in self._get_speakers_from_dir(speaker_path, existing_speakers=latent_speaker_names)]
+                latent_speaker_names = [s['speaker_name'] for s in self._get_speakers_from_json(latent_speaker_path)]
+                speaker_names = [s['speaker_name'] for s in self._get_speakers_from_dir(speaker_path, existing_speakers=latent_speaker_names)]
 
-            # Combine and ensure unique speaker names
-            combined_speakers = list(set(latent_speaker_names + speaker_names))
+                # Combine and ensure unique speaker names
+                combined_speakers = list(set(latent_speaker_names + speaker_names))
 
-            speaker_info[lang_code] = {
-                'speakers': combined_speakers
-            }
+                speaker_info[lang_code] = {
+                    'speakers': combined_speakers
+                }
         return speaker_info
 
         """ Gets available speakers """
@@ -802,4 +817,3 @@ class TTSWrapper:
 
         except Exception as e:
             raise e  # Propagate exceptions for endpoint handling.
-
