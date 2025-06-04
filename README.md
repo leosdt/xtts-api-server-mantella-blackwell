@@ -2,9 +2,9 @@
 
 This project is inspired by [daswer123](https://github.com/daswer123/xtts-api-server) and utilizes [XTTSv2](https://github.com/coqui-ai/TTS).
 
-This server was created for [Mantella](https://github.com/art-from-the-machine/Mantella) but you can use it for your needs
+This server was created for [Mantella](https://github.com/art-from-the-machine/Mantella) by [Haurrus](https://github.com/Haurrus) and I made it compatible with Blackwell GPUs by updating Pytorch libraries.
 
-Feel free to make PRs or use the code for your own needs
+Please note that I'm a total beginner in Python and will probably have trouble answering issues. Feel free to help if you're more experienced than I am.
 
 ## If you want to train you own dataset :
 
