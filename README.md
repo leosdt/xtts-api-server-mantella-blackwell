@@ -4,6 +4,8 @@ This project is inspired by [daswer123](https://github.com/daswer123/xtts-api-se
 
 This server was created for [Mantella](https://github.com/art-from-the-machine/Mantella) by [Haurrus](https://github.com/Haurrus) and I made it compatible with Blackwell GPUs by updating Pytorch libraries.
 
+Deepspeed and low VRAM modes might not work.
+
 Please note that I'm a total beginner in Python and will probably have trouble answering issues. Feel free to help if you're more experienced than I am.
 
 ## If you want to train you own dataset :
