@@ -19,7 +19,7 @@ I'm using python 3.11.7
 ### Manual
 ```bash
 # Clone REPO
-git clone https://github.com/daswer123/xtts-api-server
+git clone https://github.com/leosdt/xtts-api-server-mantella-blackwell/
 cd xtts-api-server
 # Create virtual env
 python -m venv venv
