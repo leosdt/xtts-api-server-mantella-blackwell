@@ -22,13 +22,13 @@ I'm using python 3.11.7
 ```bash
 # Clone REPO
 git clone https://github.com/leosdt/xtts-api-server-mantella-blackwell/
-cd xtts-api-server
+cd xtts-api-server-mantella-blackwell
 # Create virtual env
 python -m venv venv
 venv/scripts/activate or source venv/bin/activate
 # Install deps
 pip install -r requirements.txt
-pip install torch==2.1.1+cu118 torchaudio==2.1.1+cu118 --index-url https://download.pytorch.org/whl/cu118
+pip install --pre torch torchvision torchaudio --index-url https://download.pytorch.org/whl/nightly/cu128
 # Launch server
 python -m xtts_api_server
  
